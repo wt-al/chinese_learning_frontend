@@ -22,6 +22,15 @@ export function GamePage() {
   const [pausedTime, setPausedTime] = useState(0); // Total paused time in seconds
   const isStoppedRef = useRef(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  
+  // Input method composition state
+  const [isComposing, setIsComposing] = useState(false);
+  const [confirmedText, setConfirmedText] = useState('');
+  
+  // Audio control
+  const [lastPlayedStepIndex, setLastPlayedStepIndex] = useState<number | null>(null);
+  const [audioWaveStage, setAudioWaveStage] = useState<2 | 0 | 1>(2); // 2: default with waves, 0: no waves when playing, 1: one wave, 2: two waves
   
   // Create typing sound audio instance
   const typingSound = new Audio('https://pub-db47198bc7c9439a8a89961773b1d1cd.r2.dev/elements/typing.DR9dleQv.mp3');
@@ -31,6 +40,10 @@ export function GamePage() {
   const deleteSound = new Audio('https://pub-db47198bc7c9439a8a89961773b1d1cd.r2.dev/elements/typing.DR9dleQv.mp3');
   deleteSound.volume = 1.0;
   deleteSound.playbackRate = 0.8; // Slightly slower playback for delete to differentiate
+  
+  // Create success sound audio instance
+  const successSound = new Audio('https://pub-db47198bc7c9439a8a89961773b1d1cd.r2.dev/elements/successed.mp3');
+  successSound.volume = 0.7;
 
   useEffect(() => {
     if (sceneId) {
@@ -46,15 +59,32 @@ export function GamePage() {
         console.log('Step content:', allSteps[step]);
         dispatch({ type: 'LOAD_STEP', payload: allSteps[step] });
         setStepStartTime(new Date());
+        // Reset input states for new step
+        setConfirmedText('');
+        setIsComposing(false);
+        
+        // Auto-play audio when loading a truly new step (not the same step again)
+        if (lastPlayedStepIndex !== step) {
+          setLastPlayedStepIndex(step);
+          setTimeout(() => {
+            playAudio(allSteps[step].audio);
+          }, 500); // Small delay to ensure content is loaded
+        }
+        
+        // Auto-focus input when step loads
+        setTimeout(() => {
+          inputRef.current?.focus();
+        }, 600); // Focus after audio starts
       } else {
         console.error('Step not found:', step, 'allSteps:', allSteps);
       }
     }
-  }, [stepIndex, allSteps, dispatch]);
+  }, [stepIndex, allSteps, dispatch, lastPlayedStepIndex]);
 
   const loadSceneData = async (id: number) => {
     try {
       setIsLoading(true);
+      setLastPlayedStepIndex(null); // Reset audio tracking for new scene
       console.log('Loading scene data for ID:', id);
       
       const scene = await ApiService.getSceneById(id);
@@ -197,21 +227,60 @@ export function GamePage() {
     const url = audioUrl || state.game.currentContent?.audio;
     if (!url) return;
     
+    if (audioWaveStage !== 2) return; // Only allow play when in default state
+    
     const audio = new Audio(url);
-    audio.play().catch(console.error);
+    
+    // Start wave animation sequence: go from no waves to progressively more waves
+    setAudioWaveStage(0); // Start with no waves
+    
+    const waveTimeout1 = setTimeout(() => {
+      setAudioWaveStage(1); // Show first wave after 200ms
+    }, 200);
+    
+    const waveTimeout2 = setTimeout(() => {
+      setAudioWaveStage(2); // Show second wave after 600ms
+    }, 600);
+    
+    const resetToDefault = () => {
+      clearTimeout(waveTimeout1);
+      clearTimeout(waveTimeout2);
+      setAudioWaveStage(2); // Return to default state with waves
+    };
+    
+    audio.addEventListener('ended', resetToDefault);
+    audio.addEventListener('error', resetToDefault);
+    
+    audio.play().catch((error) => {
+      console.error('Audio play error:', error);
+      resetToDefault();
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!state.game.userAnswer.trim() || !state.game.currentContent) return;
+    // Only process submission if user has input, no current feedback, and not composing
+    if (!state.game.userAnswer.trim() || !state.game.currentContent || feedback || isComposing) {
+      return;
+    }
 
     const timeSpent = Math.floor((new Date().getTime() - stepStartTime.getTime()) / 1000);
 
-    // Frontend validation - compare user answer with expected Chinese text
-    const userAnswer = state.game.userAnswer.trim().replace(/\s+/g, ''); // Remove all spaces for comparison
-    const expectedAnswer = state.game.currentContent.chinese.replace(/\s+/g, ''); // Remove all spaces for comparison
+    // Frontend validation - compare user answer with expected Chinese text (excluding punctuation)
+    const userAnswer = state.game.userAnswer.trim();
+    const expectedAnswer = state.game.currentContent.chinese;
     
-    const isCorrect = userAnswer === expectedAnswer;
+    // Extract only Chinese characters for comparison (exclude punctuation and spaces)
+    const userChineseOnly = userAnswer.replace(/[，。！？；：、""''（）【】《》\s]/g, '');
+    const expectedChineseOnly = expectedAnswer.replace(/[，。！？；：、""''（）【】《》\s]/g, '');
+    
+    console.log('Validation Debug:');
+    console.log('User input:', userAnswer);
+    console.log('Expected:', expectedAnswer);
+    console.log('User Chinese only:', userChineseOnly);
+    console.log('Expected Chinese only:', expectedChineseOnly);
+    
+    const isCorrect = userChineseOnly === expectedChineseOnly;
     
     const result = {
       correct: isCorrect,
@@ -229,9 +298,18 @@ export function GamePage() {
     });
     
     if (result.correct) {
+      // Play success sound when answer is correct
+      successSound.currentTime = 0;
+      successSound.play().catch(console.error);
+      
       setTimeout(() => {
         nextStep();
       }, 1500);
+    } else {
+      // If answer is incorrect, refocus input for user to try again
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
     }
   };
 
@@ -239,10 +317,14 @@ export function GamePage() {
     dispatch({ type: 'UPDATE_USER_ANSWER', payload: '' });
     dispatch({ type: 'SHOW_HINT', payload: false });
     setFeedback(null);
+    setConfirmedText(''); // Clear confirmed text for next step
+    setIsComposing(false); // Reset composition state
+    setAudioWaveStage(2); // Reset to default state with waves
     
     if (state.game.currentStep < state.game.totalSteps - 1) {
       dispatch({ type: 'NEXT_STEP' });
       navigate(`/game/${sceneId}/${state.game.currentStep + 1}`);
+      // No need to reset lastPlayedStepIndex here as navigation will trigger new step loading
     } else {
       completeScene();
     }
@@ -347,6 +429,11 @@ export function GamePage() {
     setPausedTime(prev => prev + additionalPausedTime);
     setIsPaused(false);
     setLastActivityTime(new Date());
+    
+    // Focus input when resuming
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 100);
   };
 
   const trackActivity = () => {
@@ -380,16 +467,28 @@ export function GamePage() {
         toggleShowAnswer();
       } else if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
-        const form = document.querySelector('form');
-        if (form) {
-          form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+        // Play audio before submitting
+        playAudio();
+        // Small delay to let audio start, then submit
+        setTimeout(() => {
+          const form = document.querySelector('form');
+          if (form) {
+            form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+          }
+        }, 100);
+      } else if (e.key === ' ' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        // Space key: only for input method composition, don't auto-submit
+        // Let the input method handle the space key naturally
+        if (!isComposing) {
+          // If not composing, prevent space from being added to input
+          e.preventDefault();
         }
       }
     };
 
     document.addEventListener('keydown', handleKeyPress);
     return () => document.removeEventListener('keydown', handleKeyPress);
-  }, [state.game.currentContent]);
+  }, [state.game.currentContent, state.game.userAnswer]);
 
   // Timer to update elapsed time every second - only run when game has started and not stopped
   useEffect(() => {
@@ -539,16 +638,6 @@ export function GamePage() {
         {/* Main Content */}
         <div className="flex-1 flex flex-col justify-center items-center px-8 py-16">
           <div className="w-full max-w-3xl text-center">
-            {/* Step Type Indicator */}
-            <div className="mb-8">
-              <span className={`inline-flex px-4 py-2 rounded-full text-xs font-medium tracking-wide uppercase ${
-                state.game.currentContent.type === 'phrase' 
-                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' 
-                  : 'bg-slate-100 text-slate-600 border border-slate-200'
-              }`}>
-                {state.game.currentContent.type === 'phrase' ? 'Phrase' : 'Complete Sentence'}
-              </span>
-            </div>
 
             {/* English Text Display */}
             <div className="mb-12">
@@ -562,19 +651,44 @@ export function GamePage() {
                   trackActivity();
                   playAudio();
                 }}
-                className="inline-flex items-center px-8 py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-xl transition-all duration-200 shadow-sm hover:shadow-md"
+                className="inline-flex items-center justify-center w-12 h-12 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full transition-all duration-200 shadow-sm hover:shadow-md"
+                title="Play Pronunciation"
+                disabled={audioWaveStage !== 2}
               >
-                <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 14.142M5.586 9H4a1 1 0 00-1 1v4a1 1 0 001 1h1.586l4.707 4.707C10.923 20.337 12 19.939 12 19V5c0-.939-1.077-1.337-1.707-.707L5.586 9z" />
+                <svg className="w-4 h-4 transition-opacity duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                  {/* Speaker base (always visible) */}
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.59-.79-1.59-1.76V9.98c0-.97.71-1.76 1.59-1.76h2.24z" />
+                  
+                  {/* First wave (visible when stage >= 1) */}
+                  {audioWaveStage >= 1 && (
+                    <path 
+                      strokeLinecap="round" 
+                      strokeLinejoin="round" 
+                      d="M16.463 8.288a5.25 5.25 0 010 7.424"
+                      className="animate-pulse"
+                    />
+                  )}
+                  
+                  {/* Second wave (visible when stage >= 2) */}
+                  {audioWaveStage >= 2 && (
+                    <path 
+                      strokeLinecap="round" 
+                      strokeLinejoin="round" 
+                      d="M19.114 5.636a9 9 0 010 12.728"
+                      className="animate-pulse"
+                      style={{ animationDelay: '0.2s' }}
+                    />
+                  )}
                 </svg>
-                Play Pronunciation
               </button>
             </div>
 
             {/* Input Form */}
             <form onSubmit={handleSubmit} className="max-w-2xl mx-auto">
               <div className="mb-8">
+                {/* Hidden input for capturing typing */}
                 <input
+                  ref={inputRef}
                   type="text"
                   value={state.game.userAnswer}
                   onChange={(e) => {
@@ -584,28 +698,126 @@ export function GamePage() {
                     // Track user activity
                     trackActivity();
                     
-                    // Play different sounds based on input change
-                    if (!feedback?.correct) {
-                      if (newValue.length > oldValue.length) {
-                        // User added characters - play typing sound
-                        typingSound.currentTime = 0;
-                        typingSound.play().catch(() => {});
-                      } else if (newValue.length < oldValue.length) {
-                        // User deleted characters - play delete sound
-                        deleteSound.currentTime = 0;
-                        deleteSound.play().catch(() => {});
+                    // Always update the input value, but only update confirmed text when not composing
+                    dispatch({ type: 'UPDATE_USER_ANSWER', payload: newValue });
+                    
+                    if (!isComposing) {
+                      // Play different sounds based on input change
+                      if (!feedback?.correct) {
+                        if (newValue.length > oldValue.length) {
+                          // User added characters - play typing sound
+                          typingSound.currentTime = 0;
+                          typingSound.play().catch(() => {});
+                        } else if (newValue.length < oldValue.length) {
+                          // User deleted characters - play delete sound
+                          deleteSound.currentTime = 0;
+                          deleteSound.play().catch(() => {});
+                        }
                       }
+                      
+                      setConfirmedText(newValue);
+                    }
+                  }}
+                  onCompositionStart={() => {
+                    setIsComposing(true);
+                  }}
+                  onCompositionUpdate={() => {
+                    // Do nothing while composing
+                  }}
+                  onCompositionEnd={(e) => {
+                    setIsComposing(false);
+                    const newValue = e.currentTarget.value;
+                    
+                    // Play typing sound when composition ends
+                    if (!feedback?.correct && newValue.length > confirmedText.length) {
+                      typingSound.currentTime = 0;
+                      typingSound.play().catch(() => {});
                     }
                     
+                    setConfirmedText(newValue);
                     dispatch({ type: 'UPDATE_USER_ANSWER', payload: newValue });
                   }}
                   onFocus={trackActivity}
                   onClick={trackActivity}
-                  placeholder="Type Chinese characters here..."
-                  className="w-full px-8 py-6 text-xl text-center border border-slate-200 rounded-2xl focus:outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400 transition-all duration-200 bg-white shadow-sm"
+                  className="absolute opacity-0 pointer-events-none"
                   autoComplete="off"
                   disabled={feedback?.correct}
                 />
+                
+                {/* Underline display */}
+                <div 
+                  className="w-full px-8 py-6 text-center cursor-text focus:outline-none"
+                  onClick={() => {
+                    inputRef.current?.focus();
+                    trackActivity();
+                  }}
+                  tabIndex={0}
+                >
+                  <div className="flex justify-center items-center gap-2 flex-wrap">
+                    {state.game.currentContent?.chinese.split('').map((char, index) => {
+                      // Check if this character is punctuation
+                      const isPunctuation = /[，。！？；：、""''（）【】《》]/.test(char);
+                      
+                      // Only show confirmed characters (not while composing pinyin)
+                      const displayText = isComposing ? confirmedText : state.game.userAnswer;
+                      
+                      // For Chinese characters, map user input to correct position
+                      let userChar = '';
+                      if (!isPunctuation) {
+                        // Count how many Chinese characters come before this position
+                        const chineseCharsBefore = state.game.currentContent?.chinese.slice(0, index).replace(/[，。！？；：、""''（）【】《》]/g, '').length || 0;
+                        // Get the corresponding character from user input (excluding punctuation)
+                        const userChineseOnly = displayText.replace(/[，。！？；：、""''（）【】《》\s]/g, '');
+                        userChar = userChineseOnly[chineseCharsBefore] || '';
+                      }
+                      
+                      // Show punctuation directly, or user input for Chinese characters
+                      const displayChar = isPunctuation ? char : userChar;
+                      
+                      return (
+                        <div key={index} className="relative">
+                          {/* Pinyin display above the underline - only for non-punctuation characters */}
+                          {!isPunctuation && isComposing && state.game.userAnswer !== confirmedText && (() => {
+                            // Count Chinese characters before this position in the expected answer
+                            const chineseCharsBefore = state.game.currentContent?.chinese.slice(0, index).replace(/[，。！？；：、""''（）【】《》]/g, '').length || 0;
+                            // Count confirmed Chinese characters in user input
+                            const confirmedChineseCount = confirmedText.replace(/[，。！？；：、""''（）【】《》\s]/g, '').length;
+                            // Show pinyin at the position where user should input next Chinese character
+                            return chineseCharsBefore === confirmedChineseCount;
+                          })() && (
+                            <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 text-blue-600 text-sm font-mono bg-blue-50 px-2 py-1 rounded whitespace-nowrap">
+                              {state.game.userAnswer.replace(/[，。！？；：、""''（）【】《》\s]/g, '').slice(confirmedText.replace(/[，。！？；：、""''（）【】《》\s]/g, '').length)}
+                            </div>
+                          )}
+                          
+                          <div className="w-12 h-16 flex items-center justify-center text-2xl font-medium">
+                            {displayChar && (
+                              <span className={`${
+                                isPunctuation 
+                                  ? 'text-slate-500' // Punctuation in gray
+                                  : feedback?.correct 
+                                    ? 'text-emerald-600' 
+                                    : 'text-slate-800'
+                              }`}>
+                                {displayChar}
+                              </span>
+                            )}
+                          </div>
+                          <div className={`absolute bottom-2 left-0 right-0 h-0.5 ${
+                            isPunctuation
+                              ? 'bg-slate-400' // Different color for punctuation
+                              : displayChar 
+                                ? (feedback?.correct ? 'bg-emerald-500' : 'bg-blue-500')
+                                : 'bg-slate-300'
+                          }`} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {!state.game.currentContent?.chinese && (
+                    <div className="text-slate-400 text-lg">等待加载题目...</div>
+                  )}
+                </div>
               </div>
 
               {/* Show Answer/Hint */}
@@ -648,8 +860,12 @@ export function GamePage() {
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <button
                   type="submit"
-                  disabled={!state.game.userAnswer.trim() || feedback?.correct}
-                  onClick={trackActivity}
+                  disabled={!state.game.userAnswer.trim() || !!feedback}
+                  onClick={(e) => {
+                    trackActivity();
+                    // Play audio before submitting
+                    playAudio();
+                  }}
                   className="px-12 py-4 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 font-medium shadow-sm hover:shadow-md"
                 >
                   Submit Answer
