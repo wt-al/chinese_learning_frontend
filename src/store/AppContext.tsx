@@ -32,11 +32,12 @@ type AppAction =
   | { type: 'SET_CURRENT_SCENE'; payload: Scene | null }
   
   // Learning Session
-  | { type: 'START_LEARNING_SESSION'; payload: { scene: Scene; startTime: Date; sessionStats: SessionStatistics } }
+  | { type: 'START_LEARNING_SESSION'; payload: { scene: Scene; startTime: Date; sessionStats: SessionStatistics; startStep?: number } }
   | { type: 'LOAD_STEP'; payload: StepContent }
   | { type: 'UPDATE_USER_ANSWER'; payload: string }
   | { type: 'SUBMIT_ANSWER'; payload: { correct: boolean; timeSpent: number } }
   | { type: 'NEXT_STEP' }
+  | { type: 'PREVIOUS_STEP' }
   | { type: 'SHOW_HINT'; payload: boolean }
   | { type: 'COMPLETE_SCENARIO'; payload: CompletionModalData }
   | { type: 'RESTART_SCENE' }
@@ -211,7 +212,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
         },
         game: {
           ...state.game,
-          currentStep: 0,
+          currentStep: action.payload.startStep || 0,
           totalSteps: action.payload.sessionStats.totalSteps,
           startTime: action.payload.startTime,
           sessionStats: action.payload.sessionStats,
@@ -272,6 +273,17 @@ function appReducer(state: AppState, action: AppAction): AppState {
         game: {
           ...state.game,
           currentStep: state.game.currentStep + 1,
+          userAnswer: '',
+          showHint: false
+        }
+      };
+    
+    case 'PREVIOUS_STEP':
+      return {
+        ...state,
+        game: {
+          ...state.game,
+          currentStep: Math.max(0, state.game.currentStep - 1),
           userAnswer: '',
           showHint: false
         }

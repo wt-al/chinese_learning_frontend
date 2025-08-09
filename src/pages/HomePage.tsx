@@ -14,6 +14,7 @@ export default function HomePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [authLoading, setAuthLoading] = useState(true);
   const [supabaseUser, setSupabaseUser] = useState<User | null>(null);
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const navigate = useNavigate();
 
   // 简化的认证检查 - 只检查一次
@@ -53,6 +54,24 @@ export default function HomePage() {
       loadUserProgress();
     }
   }, [supabaseUser]);
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element;
+      if (!target.closest('.user-menu-container')) {
+        setShowUserMenu(false);
+      }
+    };
+
+    if (showUserMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showUserMenu]);
 
   const loadCollections = async () => {
     try {
@@ -187,16 +206,65 @@ export default function HomePage() {
             
             <div className="flex items-center space-x-6">
               {supabaseUser ? (
-                <div className="flex items-center space-x-6">
-                  <span className="text-slate-600 font-medium">
-                    Welcome, {supabaseUser.email}
-                  </span>
+                <div className="relative user-menu-container">
                   <button
-                    onClick={handleLogout}
-                    className="text-slate-500 hover:text-red-600 transition-colors duration-200 font-medium"
+                    onClick={() => setShowUserMenu(!showUserMenu)}
+                    className="flex items-center space-x-3 hover:bg-slate-50 rounded-lg px-3 py-2 transition-colors duration-200"
                   >
-                    Logout
+                    {supabaseUser.user_metadata?.avatar_url ? (
+                      <img 
+                        src={supabaseUser.user_metadata.avatar_url} 
+                        alt="User Avatar"
+                        className="w-8 h-8 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-8 h-8 bg-emerald-600 rounded-full flex items-center justify-center">
+                        <span className="text-white text-sm font-semibold">
+                          {supabaseUser.user_metadata?.full_name?.charAt(0)?.toUpperCase() || 
+                           supabaseUser.email?.charAt(0)?.toUpperCase() || 'U'}
+                        </span>
+                      </div>
+                    )}
+                    <span className="text-slate-700 font-medium">
+                      {supabaseUser.user_metadata?.full_name?.split(' ').pop() || 
+                       supabaseUser.user_metadata?.name?.split(' ').pop() ||
+                       supabaseUser.email?.split('@')[0] || 'User'}
+                    </span>
+                    <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
                   </button>
+
+                  {/* Dropdown Menu */}
+                  {showUserMenu && (
+                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-slate-200 py-2 z-50">
+                      <button
+                        onClick={() => {
+                          setShowUserMenu(false);
+                          // TODO: Navigate to history page
+                          console.log('Navigate to history');
+                        }}
+                        className="w-full text-left px-4 py-2 text-slate-700 hover:bg-slate-50 transition-colors duration-200 flex items-center space-x-2"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span>History</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowUserMenu(false);
+                          handleLogout();
+                        }}
+                        className="w-full text-left px-4 py-2 text-slate-700 hover:bg-red-50 hover:text-red-600 transition-colors duration-200 flex items-center space-x-2"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                        </svg>
+                        <span>Logout</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="flex items-center space-x-3">
@@ -221,12 +289,9 @@ export default function HomePage() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-6 lg:px-8 py-12">
-        {/* Title and Filter */}
+        {/* Category Filter */}
         <div className="mb-12">
-          <h2 className="text-4xl font-light text-slate-800 mb-8">Choose Learning Collection</h2>
-          
-          {/* Category Filter */}
-          <div className="flex flex-wrap gap-3 mb-8">
+          <div className="flex flex-wrap gap-3">
             {categories.map(category => (
               <button
                 key={category}
@@ -249,7 +314,7 @@ export default function HomePage() {
             <p className="text-slate-500 text-lg">No collections available</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {filteredCollections.map(collection => (
               <CollectionCard
                 key={collection.id}

@@ -10,10 +10,6 @@ import AuthCallback from './components/auth/AuthCallback';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import './index.css';
 
-function GameRedirect() {
-  const { sceneId } = useParams();
-  return <Navigate to={`/game/${sceneId}/0`} replace />;
-}
 
 function App() {
   return (
@@ -29,8 +25,7 @@ function App() {
             {/* 直接使用页面组件，在页面内部处理认证 */}
             <Route path="/" element={<HomePage />} />
             <Route path="/collection/:collectionId" element={<CollectionPage />} />
-            <Route path="/game/:sceneId/:stepIndex" element={<GamePage />} />
-            <Route path="/game/:sceneId" element={<GameRedirect />} />
+            <Route path="/game/:sceneId" element={<GamePage />} />
             
             {/* 默认重定向 */}
             <Route path="*" element={<Navigate to="/" replace />} />

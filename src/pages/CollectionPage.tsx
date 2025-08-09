@@ -80,13 +80,10 @@ export function CollectionPage() {
 
   const handleScenarioSelect = (scene: Scene) => {
     dispatch({ type: 'SET_CURRENT_SCENE', payload: scene });
-    const userProgress = userProgressMap.get(scene.id);
     
-    if (userProgress && userProgress.current_sentence_index > 0) {
-      navigate(`/game/${scene.id}/${userProgress.current_sentence_index}`);
-    } else {
-      navigate(`/game/${scene.id}/0`);
-    }
+    // Always navigate to the game page without step index
+    // The game page will handle loading the correct step internally
+    navigate(`/game/${scene.id}`);
   };
 
   const getSortedScenes = (scenes: Scene[]) => {
