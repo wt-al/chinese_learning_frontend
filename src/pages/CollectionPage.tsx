@@ -15,10 +15,29 @@ export function CollectionPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [sortBy, setSortBy] = useState<'default' | 'difficulty' | 'progress'>('default');
   const [supabaseUser, setSupabaseUser] = useState<User | null>(null);
+  const [showUserMenu, setShowUserMenu] = useState(false);
 
   useEffect(() => {
     checkAuthAndLoadData();
   }, [collectionId]);
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element;
+      if (!target.closest('.user-menu-container')) {
+        setShowUserMenu(false);
+      }
+    };
+
+    if (showUserMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showUserMenu]);
 
   const checkAuthAndLoadData = async () => {
     try {
@@ -84,6 +103,18 @@ export function CollectionPage() {
     // Always navigate to the game page without step index
     // The game page will handle loading the correct step internally
     navigate(`/game/${scene.id}`);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+      // 清理本地状态
+      dispatch({ type: 'LOGOUT' });
+      setUserProgressMap(new Map());
+      navigate('/login');
+    } catch (error) {
+      console.error('Sign out error:', error);
+    }
   };
 
   const getSortedScenes = (scenes: Scene[]) => {
@@ -155,9 +186,78 @@ export function CollectionPage() {
 
             <div className="flex items-center space-x-6">
               {supabaseUser ? (
-                <span className="text-slate-600 font-medium">
-                  Welcome, {supabaseUser.email}
-                </span>
+                <div className="relative user-menu-container">
+                  <button
+                    onClick={() => setShowUserMenu(!showUserMenu)}
+                    className="flex items-center space-x-3 hover:bg-slate-50 rounded-lg px-3 py-2 transition-colors duration-200"
+                  >
+                    {supabaseUser.user_metadata?.avatar_url ? (
+                      <img 
+                        src={supabaseUser.user_metadata.avatar_url} 
+                        alt="User Avatar"
+                        className="w-8 h-8 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-8 h-8 bg-emerald-600 rounded-full flex items-center justify-center">
+                        <span className="text-white text-sm font-semibold">
+                          {supabaseUser.user_metadata?.full_name?.charAt(0)?.toUpperCase() || 
+                           supabaseUser.email?.charAt(0)?.toUpperCase() || 'U'}
+                        </span>
+                      </div>
+                    )}
+                    <span className="text-slate-700 font-medium">
+                      {supabaseUser.user_metadata?.full_name?.split(' ').pop() || 
+                       supabaseUser.user_metadata?.name?.split(' ').pop() ||
+                       supabaseUser.email?.split('@')[0] || 'User'}
+                    </span>
+                    <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+
+                  {/* Dropdown Menu */}
+                  {showUserMenu && (
+                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-slate-200 py-2 z-50">
+                      <button
+                        onClick={() => {
+                          setShowUserMenu(false);
+                          navigate('/');
+                        }}
+                        className="w-full text-left px-4 py-2 text-slate-700 hover:bg-slate-50 transition-colors duration-200 flex items-center space-x-2"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                        </svg>
+                        <span>Home</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowUserMenu(false);
+                          // TODO: Navigate to history page
+                          console.log('Navigate to history');
+                        }}
+                        className="w-full text-left px-4 py-2 text-slate-700 hover:bg-slate-50 transition-colors duration-200 flex items-center space-x-2"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span>History</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowUserMenu(false);
+                          handleLogout();
+                        }}
+                        className="w-full text-left px-4 py-2 text-slate-700 hover:bg-red-50 hover:text-red-600 transition-colors duration-200 flex items-center space-x-2"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                        </svg>
+                        <span>Logout</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
               ) : (
                 <button
                   onClick={() => navigate('/login')}

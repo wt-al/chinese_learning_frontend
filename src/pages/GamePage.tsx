@@ -536,7 +536,7 @@ export function GamePage() {
 
   // Function to get pinyin for each character position
   const getPinyinForCharacter = (charIndex: number): string => {
-    if (!state.game.currentContent || hintState !== 1) return '';
+    if (!state.game.currentContent || (hintState !== 1 && hintState !== 2)) return '';
     
     const currentContent = state.game.currentContent;
     const chineseText = currentContent.chinese;
@@ -548,12 +548,7 @@ export function GamePage() {
     // Count Chinese characters before this position (excluding punctuation)
     const chineseCharsBefore = chineseText.slice(0, charIndex).replace(/[，。！？；：、""''（）【】《》]/g, '').length;
     
-    // For phrase-based content, get pinyin from mapping
-    if (currentContent.type === 'phrase') {
-      return currentContent.pinyin || '';
-    }
-    
-    // For sentence-based content, extract from the combined pinyin
+    // Get pinyin array from the pinyin string
     if (currentContent.pinyin) {
       const pinyinArray = currentContent.pinyin.split(' ').filter(p => p.trim());
       return pinyinArray[chineseCharsBefore] || '';
@@ -1164,10 +1159,55 @@ export function GamePage() {
                   }}
                   tabIndex={0}
                 >
-                  <div className="flex justify-center items-center gap-2 flex-wrap">
-                    {state.game.currentContent?.chinese.split('').map((char, index) => {
+                  {(() => {
+                    // Calculate total number of Chinese characters (excluding punctuation)
+                    const totalChineseChars = state.game.currentContent?.chinese.split('').filter(c => !/[，。！？；：、""''（）【】《》]/.test(c)).length || 0;
+                    const needsMultipleRows = totalChineseChars > 9;
+                    const justifyClass = needsMultipleRows ? 'justify-start' : 'justify-center';
+                    
+                    // Dynamic row gap based on hint state and multiple rows
+                    const rowGapClass = needsMultipleRows && (hintState === 1 || hintState === 2) ? 'gap-y-16' : 'gap-y-4';
+                    
+                    return (
+                      <div className={`flex ${justifyClass} items-start flex-wrap ${rowGapClass} max-w-[575px] mx-auto`}>
+                        {state.game.currentContent?.chinese.split('').map((char, index, array) => {
                       // Check if this character is punctuation
                       const isPunctuation = /[，。！？；：、""''（）【】《》]/.test(char);
+                      
+                      // Count non-punctuation characters before this position for row calculation
+                      const nonPunctuationsBefore = array.slice(0, index).filter(c => !/[，。！？；：、""''（）【】《》]/.test(c)).length;
+                      const currentNonPunctuationIndex = !isPunctuation ? nonPunctuationsBefore : -1;
+                      
+                      // Calculate total Chinese characters for row logic
+                      const totalChineseCount = array.filter(c => !/[，。！？；：、""''（）【】《》]/.test(c)).length;
+                      
+                      // Check if this is the last character in its row
+                      const isLastInRow = !isPunctuation && (() => {
+                        // Case 1: Every 9th Chinese character (standard row end)
+                        if ((currentNonPunctuationIndex + 1) % 9 === 0) {
+                          return true;
+                        }
+                        
+                        // Case 2: This is the very last Chinese character in the entire text
+                        if (currentNonPunctuationIndex + 1 === totalChineseCount) {
+                          return true;
+                        }
+                        
+                        // Case 3: The next character is a punctuation (need to close current Chinese character)
+                        const nextChar = array[index + 1];
+                        if (nextChar && /[，。！？；：、""''（）【】《》]/.test(nextChar)) {
+                          return true;
+                        }
+                        
+                        return false;
+                      })();
+                      
+                      // Check if this is the first character in its row (every 9 non-punctuation characters)
+                      const isFirstInRow = !isPunctuation && (currentNonPunctuationIndex % 9 === 0);
+                      
+                      // Check if this is the very last non-punctuation character
+                      const isLastCharacter = !isPunctuation && 
+                        array.slice(index + 1).every(c => /[，。！？；：、""''（）【】《》]/.test(c));
                       
                       // Only show confirmed characters (not while composing pinyin)
                       const displayText = isComposing ? confirmedText : state.game.userAnswer;
@@ -1187,7 +1227,7 @@ export function GamePage() {
                       
                       return (
                         <div key={index} className="relative">
-                          {/* Pinyin display above the underline - only for non-punctuation characters */}
+                          {/* Pinyin display above the grid - only for non-punctuation characters */}
                           {!isPunctuation && isComposing && state.game.userAnswer !== confirmedText && (() => {
                             // Count Chinese characters before this position in the expected answer
                             const chineseCharsBefore = state.game.currentContent?.chinese.slice(0, index).replace(/[，。！？；：、""''（）【】《》]/g, '').length || 0;
@@ -1200,63 +1240,99 @@ export function GamePage() {
                               {state.game.userAnswer.replace(/[，。！？；：、""''（）【】《》\s]/g, '').slice(confirmedText.replace(/[，。！？；：、""''（）【】《》\s]/g, '').length)}
                             </div>
                           )}
-                          
-                          {/* Cursor display - show at the next input position only when focused */}
-                          {isFocused && !isPunctuation && !displayChar && (() => {
-                            // Count Chinese characters before this position in the expected answer
-                            const chineseCharsBefore = state.game.currentContent?.chinese.slice(0, index).replace(/[，。！？；：、""''（）【】《》]/g, '').length || 0;
-                            // Count confirmed Chinese characters in user input
-                            const confirmedChineseCount = (isComposing ? confirmedText : state.game.userAnswer).replace(/[，。！？；：、""''（）【】《》\s]/g, '').length;
-                            // Show cursor at the next position to input
-                            return chineseCharsBefore === confirmedChineseCount;
-                          })() && (
-                            <div className="absolute inset-0 flex items-center justify-center">
-                              <div className="w-0.5 h-8 bg-emerald-500 animate-blink"></div>
-                            </div>
-                          )}
-                          
-                          <div className="w-12 h-16 flex items-center justify-center text-2xl font-medium">
-                            {displayChar && (
-                              <span className={`${
-                                isPunctuation 
-                                  ? 'text-slate-500' // Punctuation in gray
-                                  : feedback?.correct 
-                                    ? 'text-emerald-600' 
-                                    : 'text-slate-800'
+                          {/* Tianzige (田字格) grid for Chinese characters */}
+                          {!isPunctuation ? (
+                            <div className={`relative w-16 h-16 ${isFirstInRow ? 'ml-0' : '-ml-[1px]'}`}>
+                              {/* Outer border - show right border for last in row */}
+                              <div className={`absolute inset-0 border-t-2 border-b-2 border-l-2 ${isLastInRow ? 'border-r-2' : ''} ${
+                                isCharacterIncorrect(index)
+                                  ? 'border-red-400' // Red border for incorrect characters
+                                  : displayChar
+                                    ? (feedback?.correct ? 'border-emerald-500' : 'border-slate-600')
+                                    : isCursorPosition(index)
+                                      ? 'border-emerald-500' // Green border for cursor position
+                                      : 'border-slate-400'
                               }`}>
+                                {/* Cross lines (dashed) */}
+                                <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100">
+                                  {/* Horizontal line */}
+                                  <line 
+                                    x1="0" y1="50" 
+                                    x2="100" y2="50" 
+                                    stroke="currentColor" 
+                                    strokeWidth="1" 
+                                    strokeDasharray="3,3"
+                                    className="text-slate-400"
+                                  />
+                                  {/* Vertical line */}
+                                  <line 
+                                    x1="50" y1="0" 
+                                    x2="50" y2="100" 
+                                    stroke="currentColor" 
+                                    strokeWidth="1" 
+                                    strokeDasharray="3,3"
+                                    className="text-slate-400"
+                                  />
+                                </svg>
+                              </div>
+                              {/* Character display and cursor */}
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                {displayChar ? (
+                                  <span className={`text-5xl ${
+                                    feedback?.correct 
+                                      ? 'text-emerald-600' 
+                                      : 'text-slate-800'
+                                  }`} style={{ fontFamily: 'Pang Zhonghua Kai, 庞中华楷体, KaiTi, STKaiti, FangSong, STFangsong, serif' }}>
+                                    {displayChar}
+                                  </span>
+                                ) : (
+                                  /* Show cursor in the grid when it's the input position */
+                                  isFocused && (() => {
+                                    const chineseCharsBefore = state.game.currentContent?.chinese.slice(0, index).replace(/[，。！？；：、""''（）【】《》]/g, '').length || 0;
+                                    const confirmedChineseCount = (isComposing ? confirmedText : state.game.userAnswer).replace(/[，。！？；：、""''（）【】《》\s]/g, '').length;
+                                    return chineseCharsBefore === confirmedChineseCount;
+                                  })() && (
+                                    <div className="w-0.5 h-10 bg-emerald-500 animate-blink"></div>
+                                  )
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            /* Punctuation display without grid */
+                            <div className="w-8 h-16 flex items-center justify-center text-4xl">
+                              <span className="text-slate-500" style={{ fontFamily: 'Pang Zhonghua Kai, 庞中华楷体, KaiTi, STKaiti, FangSong, STFangsong, serif' }}>
                                 {displayChar}
                               </span>
-                            )}
-                          </div>
-                          <div className={`absolute bottom-2 left-0 right-0 h-0.5 ${
-                            isPunctuation
-                              ? 'bg-slate-400' // Different color for punctuation
-                              : isCharacterIncorrect(index)
-                                ? 'bg-red-500' // Red underline for incorrect characters
-                                : displayChar 
-                                  ? (feedback?.correct ? 'bg-emerald-500' : 'bg-emerald-500')
-                                  : isCursorPosition(index)
-                                    ? 'bg-emerald-500' // Green underline for cursor position when focused
-                                    : 'bg-slate-300'
-                          }`} />
-                          
-                          {/* Pinyin display below the underline */}
-                          {!isPunctuation && hintState === 1 && getPinyinForCharacter(index) && (
-                            <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 text-blue-600 text-xs font-mono bg-blue-50 px-1 py-0.5 rounded whitespace-nowrap">
-                              {getPinyinForCharacter(index)}
                             </div>
                           )}
                           
-                          {/* Chinese character display below the underline */}
-                          {hintState === 2 && getChineseForCharacter(index) && (
-                            <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 text-emerald-600 text-sm font-medium bg-emerald-50 px-2 py-1 rounded whitespace-nowrap border border-emerald-200">
-                              {getChineseForCharacter(index)}
+                          {/* Hint display below the grid - always reserve space for both pinyin and chinese */}
+                          {!isPunctuation && (hintState === 1 || hintState === 2) && (
+                            <div className="absolute top-[68px] left-1/2 transform -translate-x-1/2 text-center w-20">
+                              {/* Pinyin display - fixed position */}
+                              <div className="h-5 flex items-center justify-center mb-1">
+                                {getPinyinForCharacter(index) && (
+                                  <div className="text-blue-600 text-xs font-mono bg-blue-50 px-1 py-0.5 rounded whitespace-nowrap">
+                                    {getPinyinForCharacter(index)}
+                                  </div>
+                                )}
+                              </div>
+                              {/* Chinese character display space - always reserved */}
+                              <div className="h-6 flex items-center justify-center">
+                                {hintState === 2 && getChineseForCharacter(index) && (
+                                  <div className="text-emerald-600 text-sm font-medium bg-emerald-50 px-2 py-1 rounded whitespace-nowrap border border-emerald-200">
+                                    {getChineseForCharacter(index)}
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           )}
                         </div>
                       );
                     })}
-                  </div>
+                      </div>
+                    );
+                  })()}
                   {!state.game.currentContent?.chinese && (
                     <div className="text-slate-400 text-lg">等待加载题目...</div>
                   )}

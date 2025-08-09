@@ -40,91 +40,121 @@ export function CompletionModal({
     return 'Keep practicing!';
   };
 
+  const getStarRating = (accuracy: number) => {
+    if (accuracy >= 95) return 5;
+    if (accuracy >= 85) return 4;
+    if (accuracy >= 75) return 3;
+    if (accuracy >= 60) return 2;
+    return 1;
+  };
+
+  const renderStars = (starCount: number) => {
+    const stars = [];
+    // Arc settings
+    const radius = 100; // Radius of the arc
+    const startAngle = -60; // Start angle in degrees (leftmost star)
+    const endAngle = 60;   // End angle in degrees (rightmost star)
+    const angleStep = (endAngle - startAngle) / 4; // Angle between each star
+
+    for (let i = 0; i < 5; i++) {
+      const angle = startAngle + (i * angleStep);
+      const radian = (angle * Math.PI) / 180;
+      
+      // Calculate position on the arc
+      const x = Math.sin(radian) * radius;
+      const y = -Math.cos(radian) * radius + radius; // Offset to make arc downward
+      
+      // Calculate rotation to make star "point" toward center
+      const rotation = -angle;
+      
+      const transform = `translate(${x}px, ${y}px) rotate(${rotation}deg)`;
+
+      if (i < starCount) {
+        // Yellow star for earned stars
+        stars.push(
+          <div key={i} className="absolute" style={{ transform }}>
+            <img
+              src="https://pub-db47198bc7c9439a8a89961773b1d1cd.r2.dev/elements/yellow-star.png"
+              alt="Earned Star"
+              className="w-32 h-32 object-contain"
+            />
+          </div>
+        );
+      } else {
+        // Platinum star for unearned stars
+        stars.push(
+          <div key={i} className="absolute" style={{ transform }}>
+            <img
+              src="https://pub-db47198bc7c9439a8a89961773b1d1cd.r2.dev/elements/platinum-star.png"
+              alt="Unearned Star"
+              className="w-32 h-32 object-contain opacity-50"
+            />
+          </div>
+        );
+      }
+    }
+    return stars;
+  };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-        {/* Success Header */}
-        <div className="bg-gradient-to-r from-green-400 to-blue-500 text-white p-6 text-center">
-          <div className="w-16 h-16 bg-white bg-opacity-20 rounded-full flex items-center justify-center mx-auto mb-3">
-            <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-            </svg>
+      <div className="rounded-2xl shadow-2xl max-w-sm w-full max-h-[85vh] overflow-y-auto text-white" style={{ backgroundColor: '#3D5E87' }}>
+        {/* Star Rating Header */}
+        <div className="text-white p-6 pt-8 pb-10 text-center" style={{ backgroundColor: '#3D5E87' }}>
+          <div className="relative flex justify-center items-center h-40 w-full">
+            {renderStars(getStarRating(data.statistics.accuracy))}
           </div>
-          <h2 className="text-2xl font-bold mb-1">Congratulations!</h2>
-          <p className="text-green-100">You completed the scenario</p>
         </div>
 
         {/* Content */}
-        <div className="p-6">
-          {/* Scenario Info */}
-          <div className="text-center mb-6">
-            <h3 className="text-xl font-semibold text-gray-900 mb-1">{data.sceneName}</h3>
-            <p className="text-gray-600">from {data.collectionName}</p>
-          </div>
+        <div className="p-4">
 
           {/* Statistics */}
-          <div className="bg-gray-50 rounded-lg p-4 mb-6">
-            <h4 className="font-medium text-gray-900 mb-3">Your Performance</h4>
+          <div className="bg-white bg-opacity-10 rounded-lg p-3 mb-4">
+            <h4 className="font-medium text-white mb-3">Your Performance</h4>
             
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3">
               {/* Time */}
               <div className="text-center">
-                <div className="text-2xl font-bold text-blue-600">
+                <div className="text-2xl font-bold text-white">
                   {formatTime(data.statistics.timeSpent)}
                 </div>
-                <div className="text-sm text-gray-500">Time taken</div>
+                <div className="text-sm text-white opacity-70">Time taken</div>
               </div>
 
               {/* Accuracy */}
               <div className="text-center">
-                <div className={`text-2xl font-bold ${getAccuracyColor(data.statistics.accuracy)}`}>
+                <div className="text-2xl font-bold text-white">
                   {data.statistics.accuracy}%
                 </div>
-                <div className="text-sm text-gray-500">Accuracy</div>
+                <div className="text-sm text-white opacity-70">Accuracy</div>
               </div>
 
               {/* Correct Answers */}
               <div className="text-center">
-                <div className="text-2xl font-bold text-green-600">
+                <div className="text-2xl font-bold text-white">
                   {data.statistics.correctAnswers}
                 </div>
-                <div className="text-sm text-gray-500">Correct</div>
+                <div className="text-sm text-white opacity-70">Correct</div>
               </div>
 
               {/* Hints Used */}
               <div className="text-center">
-                <div className="text-2xl font-bold text-orange-600">
+                <div className="text-2xl font-bold text-white">
                   {data.statistics.hintsUsed}
                 </div>
-                <div className="text-sm text-gray-500">Hints used</div>
+                <div className="text-sm text-white opacity-70">Hints used</div>
               </div>
             </div>
 
             {/* Accuracy Message */}
             <div className="text-center mt-4">
-              <p className={`font-medium ${getAccuracyColor(data.statistics.accuracy)}`}>
+              <p className="font-medium text-white">
                 {getAccuracyMessage(data.statistics.accuracy)}
               </p>
             </div>
           </div>
 
-          {/* Collection Progress */}
-          <div className="mb-6">
-            <div className="flex justify-between text-sm text-gray-600 mb-2">
-              <span>Collection Progress</span>
-              <span>
-                {data.collectionProgress.completed} of {data.collectionProgress.total} scenarios
-              </span>
-            </div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <div 
-                className="bg-blue-600 h-2 rounded-full transition-all duration-500"
-                style={{ 
-                  width: `${(data.collectionProgress.completed / data.collectionProgress.total) * 100}%` 
-                }}
-              />
-            </div>
-          </div>
 
           {/* Action Buttons */}
           <div className="space-y-3">
@@ -132,7 +162,7 @@ export function CompletionModal({
             {data.nextSceneId && data.collectionProgress.completed < data.collectionProgress.total && (
               <button 
                 onClick={onContinue}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center"
+                className="w-full bg-white bg-opacity-20 hover:bg-white hover:bg-opacity-30 text-white font-medium py-3 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center border border-white border-opacity-30"
               >
                 <span>Continue to Next Scenario</span>
                 <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -144,7 +174,7 @@ export function CompletionModal({
             {/* Review This Scenario */}
             <button 
               onClick={onReview}
-              className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-3 px-4 rounded-lg transition-colors duration-200"
+              className="w-full bg-white bg-opacity-10 hover:bg-white hover:bg-opacity-20 text-white font-medium py-3 px-4 rounded-lg transition-colors duration-200 border border-white border-opacity-20"
             >
               Review This Scenario
             </button>
@@ -152,7 +182,7 @@ export function CompletionModal({
             {/* Back to Collection */}
             <button 
               onClick={onBackToCollection}
-              className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-3 px-4 rounded-lg transition-colors duration-200"
+              className="w-full bg-white bg-opacity-10 hover:bg-white hover:bg-opacity-20 text-white font-medium py-3 px-4 rounded-lg transition-colors duration-200 border border-white border-opacity-20"
             >
               Back to Collection
             </button>
@@ -160,13 +190,13 @@ export function CompletionModal({
 
           {/* Social Sharing (Optional) */}
           {data.statistics.accuracy >= 90 && (
-            <div className="mt-6 pt-6 border-t border-gray-200">
-              <p className="text-center text-gray-600 text-sm mb-3">Share your achievement!</p>
+            <div className="mt-6 pt-6 border-t border-white border-opacity-20">
+              <p className="text-center text-white opacity-80 text-sm mb-3">Share your achievement!</p>
               <div className="flex justify-center space-x-3">
-                <button className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm">
+                <button className="bg-white bg-opacity-20 hover:bg-white hover:bg-opacity-30 text-white px-4 py-2 rounded-lg text-sm border border-white border-opacity-30">
                   Share on Twitter
                 </button>
-                <button className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm">
+                <button className="bg-white bg-opacity-20 hover:bg-white hover:bg-opacity-30 text-white px-4 py-2 rounded-lg text-sm border border-white border-opacity-30">
                   Share on WeChat
                 </button>
               </div>
