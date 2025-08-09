@@ -16,12 +16,11 @@ export function GamePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [feedback, setFeedback] = useState<{ correct: boolean; message: string } | null>(null);
   const [stepStartTime, setStepStartTime] = useState(new Date());
-  const [currentTime, setCurrentTime] = useState(new Date());
+  const [elapsedSeconds, setElapsedSeconds] = useState(0); // Track elapsed seconds directly
   const [isPaused, setIsPaused] = useState(false);
   const [isStopped, setIsStopped] = useState(false);
   const [displayTime, setDisplayTime] = useState('00:00:00');
   const [lastActivityTime, setLastActivityTime] = useState(new Date());
-  const [pausedTime, setPausedTime] = useState(0); // Total paused time in seconds
   const isStoppedRef = useRef(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -179,8 +178,9 @@ export function GamePage() {
         dispatch({ type: 'LOAD_STEP', payload: steps[startStep] });
       }
       
-      // Initialize activity tracking
+      // Initialize activity tracking and timer
       setLastActivityTime(startTime);
+      setElapsedSeconds(0);
     } catch (error) {
       console.error('Failed to load scene data:', error);
     } finally {
@@ -625,13 +625,10 @@ export function GamePage() {
     
     if (!state.game.startTime) return '00:00:00';
     
-    // Calculate current elapsed time
-    let diff = Math.max(0, Math.floor((currentTime.getTime() - state.game.startTime.getTime()) / 1000));
-    // Subtract paused time from total elapsed time
-    diff = Math.max(0, diff - pausedTime);
-    const hours = Math.floor(diff / 3600);
-    const minutes = Math.floor((diff % 3600) / 60);
-    const seconds = diff % 60;
+    // Use the tracked elapsed seconds
+    const hours = Math.floor(elapsedSeconds / 3600);
+    const minutes = Math.floor((elapsedSeconds % 3600) / 60);
+    const seconds = elapsedSeconds % 60;
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   };
 
@@ -641,9 +638,9 @@ export function GamePage() {
   };
 
   const handlePause = () => {
-    // Record the time when pausing to calculate paused duration later
-    setLastActivityTime(new Date());
+    // Simply set paused state, timer will stop incrementing
     setIsPaused(true);
+    setLastActivityTime(new Date());
   };
 
   const handleStop = () => {
@@ -673,7 +670,7 @@ export function GamePage() {
     setIsStopped(false);
     setIsPaused(false);
     setDisplayTime('00:00:00');
-    setPausedTime(0);
+    setElapsedSeconds(0);
     setLastActivityTime(new Date());
     isStoppedRef.current = false;
     
@@ -726,10 +723,7 @@ export function GamePage() {
   };
 
   const handleResume = () => {
-    const pauseStartTime = lastActivityTime.getTime();
-    const resumeTime = new Date().getTime();
-    const additionalPausedTime = Math.floor((resumeTime - pauseStartTime) / 1000);
-    setPausedTime(prev => prev + additionalPausedTime);
+    // Simply resume, timer will continue from where it left off
     setIsPaused(false);
     setLastActivityTime(new Date());
     
@@ -866,11 +860,12 @@ export function GamePage() {
         return;
       }
       
-      const now = new Date();
-      setCurrentTime(now);
-      
-      // Check for inactivity (auto-pause after 2 minutes)
+      // Only update time if not paused
       if (!isPaused) {
+        setElapsedSeconds(prev => prev + 1);
+        
+        // Check for inactivity (auto-pause after 2 minutes)
+        const now = new Date();
         const inactiveTime = Math.floor((now.getTime() - lastActivityTime.getTime()) / 1000);
         if (inactiveTime >= 120) { // 2 minutes = 120 seconds
           setIsPaused(true);
@@ -885,6 +880,13 @@ export function GamePage() {
       }
     };
   }, [state.game.startTime, isPaused, isStopped, lastActivityTime]);
+
+  // Reset elapsed seconds when starting a new game session
+  useEffect(() => {
+    if (state.game.startTime) {
+      setElapsedSeconds(0);
+    }
+  }, [state.game.startTime]);
 
   // Cleanup audio on component unmount
   useEffect(() => {
@@ -1148,9 +1150,9 @@ export function GamePage() {
                   disabled={feedback?.correct}
                 />
                 
-                {/* Underline display with navigation arrows */}
+                {/* Underline display */}
                 <div 
-                  className="w-full px-8 py-6 pb-12 text-center cursor-text focus:outline-none relative"
+                  className="w-full px-8 py-6 pb-12 text-center cursor-text focus:outline-none"
                   onClick={() => {
                     ensureFocus();
                   }}
@@ -1162,45 +1164,6 @@ export function GamePage() {
                   }}
                   tabIndex={0}
                 >
-                  {/* Previous Step Arrow - Left */}
-                  {state.game.currentStep > 0 && (
-                    <button
-                      onClick={() => {
-                        dispatch({ type: 'UPDATE_USER_ANSWER', payload: '' });
-                        dispatch({ type: 'SHOW_HINT', payload: false });
-                        setFeedback(null);
-                        setConfirmedText('');
-                        setIsComposing(false);
-                        setHintState(0);
-                        setWaitingForFinalConfirmation(false);
-                        dispatch({ type: 'PREVIOUS_STEP' });
-                      }}
-                      className="absolute left-0 top-1/2 transform -translate-y-1/2 p-4 text-slate-400 hover:text-emerald-600 transition-all duration-200 text-6xl"
-                      title="Previous Step"
-                    >
-                      ⟨
-                    </button>
-                  )}
-
-                  {/* Next Step Arrow - Right */}
-                  {state.game.currentStep < state.game.totalSteps - 1 && (
-                    <button
-                      onClick={() => {
-                        dispatch({ type: 'UPDATE_USER_ANSWER', payload: '' });
-                        dispatch({ type: 'SHOW_HINT', payload: false });
-                        setFeedback(null);
-                        setConfirmedText('');
-                        setIsComposing(false);
-                        setHintState(0);
-                        setWaitingForFinalConfirmation(false);
-                        dispatch({ type: 'NEXT_STEP' });
-                      }}
-                      className="absolute right-0 top-1/2 transform -translate-y-1/2 p-4 text-slate-400 hover:text-emerald-600 transition-all duration-200 text-6xl"
-                      title="Next Step"
-                    >
-                      ⟩
-                    </button>
-                  )}
                   <div className="flex justify-center items-center gap-2 flex-wrap">
                     {state.game.currentContent?.chinese.split('').map((char, index) => {
                       // Check if this character is punctuation
@@ -1389,7 +1352,32 @@ export function GamePage() {
               )}
 
               {/* Action Buttons */}
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+                {/* Previous Step Arrow - Left */}
+                <button
+                  onClick={() => {
+                    if (state.game.currentStep > 0) {
+                      dispatch({ type: 'UPDATE_USER_ANSWER', payload: '' });
+                      dispatch({ type: 'SHOW_HINT', payload: false });
+                      setFeedback(null);
+                      setConfirmedText('');
+                      setIsComposing(false);
+                      setHintState(0);
+                      setWaitingForFinalConfirmation(false);
+                      dispatch({ type: 'PREVIOUS_STEP' });
+                    }
+                  }}
+                  className={`p-3 text-slate-400 hover:text-emerald-600 transition-all duration-200 mr-4 ${
+                    state.game.currentStep <= 0 ? 'invisible' : ''
+                  }`}
+                  disabled={state.game.currentStep <= 0}
+                  title="Previous Step"
+                >
+                  <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 320 512">
+                    <path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/>
+                  </svg>
+                </button>
+
                 <button
                   type="submit"
                   disabled={!waitingForFinalConfirmation && !state.game.userAnswer.trim()}
@@ -1419,6 +1407,31 @@ export function GamePage() {
                   className="px-8 py-4 bg-slate-100 text-slate-700 rounded-xl hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-300 transition-all duration-200 font-medium"
                 >
                   {hintState === 0 ? 'Hint' : hintState === 1 ? 'Show Answer' : 'Hide'}
+                </button>
+
+                {/* Next Step Arrow - Right */}
+                <button
+                  onClick={() => {
+                    if (state.game.currentStep < state.game.totalSteps - 1) {
+                      dispatch({ type: 'UPDATE_USER_ANSWER', payload: '' });
+                      dispatch({ type: 'SHOW_HINT', payload: false });
+                      setFeedback(null);
+                      setConfirmedText('');
+                      setIsComposing(false);
+                      setHintState(0);
+                      setWaitingForFinalConfirmation(false);
+                      dispatch({ type: 'NEXT_STEP' });
+                    }
+                  }}
+                  className={`p-3 text-slate-400 hover:text-emerald-600 transition-all duration-200 ml-4 ${
+                    state.game.currentStep >= state.game.totalSteps - 1 ? 'invisible' : ''
+                  }`}
+                  disabled={state.game.currentStep >= state.game.totalSteps - 1}
+                  title="Next Step"
+                >
+                  <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 320 512">
+                    <path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/>
+                  </svg>
                 </button>
               </div>
             </form>
